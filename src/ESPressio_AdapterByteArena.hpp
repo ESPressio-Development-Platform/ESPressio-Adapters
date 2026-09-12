@@ -12,11 +12,14 @@
 
 namespace ESPressio::Adapters {
 
+/// <summary>One compile-time contiguous slot size/count pair used by StaticByteArena.</summary>
 template<std::size_t TSlotBytes,std::size_t TSlotCount>
 struct ByteClass final {
     static_assert(TSlotBytes>0,"Adapter byte class requires non-zero slot bytes");
     static_assert(TSlotCount>0,"Adapter byte class requires non-zero slot count");
+    /// <summary>Capacity of every slot in this class.</summary>
     static constexpr std::size_t SlotBytes=TSlotBytes;
+    /// <summary>Number of independently reclaimable slots in this class.</summary>
     static constexpr std::size_t SlotCount=TSlotCount;
 };
 
@@ -35,10 +38,13 @@ class ByteLease final {
               std::uint8_t* data,std::size_t capacity,AdapterLeaseIdentity identity) noexcept
         :_owner(owner),_release(release),_data(data),_capacity(capacity),_identity(identity){}
 public:
+    /// <summary>Creates an empty non-owning lease.</summary>
     ByteLease() noexcept=default;
     ByteLease(const ByteLease&)=delete;
     ByteLease& operator=(const ByteLease&)=delete;
+    /// <summary>Transfers exact slot ownership without changing its generation.</summary>
     ByteLease(ByteLease&& other) noexcept { *this=std::move(other); }
+    /// <summary>Releases any current slot, then transfers exact ownership from another lease.</summary>
     ByteLease& operator=(ByteLease&& other) noexcept {
         if(this==&other) return *this;
         Reset();
@@ -51,12 +57,18 @@ public:
         _sealed=std::exchange(other._sealed,false);
         return *this;
     }
+    /// <summary>Releases the exact owned generation when the lease leaves scope.</summary>
     ~ByteLease(){ Reset(); }
 
+    /// <summary>Indicates whether this lease currently owns a valid slot generation.</summary>
     explicit operator bool() const noexcept { return _owner && _release && bool(_identity); }
+    /// <summary>Returns total writable slot capacity.</summary>
     std::size_t Capacity() const noexcept { return _capacity; }
+    /// <summary>Returns the sealed actual payload length, or zero before commit.</summary>
     std::size_t Length() const noexcept { return _length; }
+    /// <summary>Indicates whether mutable ownership has been sealed into immutable payload bytes.</summary>
     bool IsCommitted() const noexcept { return _sealed; }
+    /// <summary>Returns the exact class/slot/generation identity.</summary>
     AdapterLeaseIdentity Identity() const noexcept { return _identity; }
     /// <summary>Returns the bounded mutable encode view only before commit.</summary>
     AdapterMutableByteView MutableView() noexcept {
@@ -136,6 +148,7 @@ struct StrictAscendingClasses<Last> : std::true_type {};
 }
 
 /// <summary>Compile-time size-class arena using smallest-currently-free fitting contiguous slots only.</summary>
+/// <remarks>Allocation never chains slots, grows storage or falls back to heap. Independent release avoids FIFO pinning.</remarks>
 template<class... TClasses>
 class StaticByteArena final {
     static_assert(sizeof...(TClasses)>0,"StaticByteArena requires at least one byte class");
@@ -175,12 +188,15 @@ class StaticByteArena final {
     }
 #endif
 public:
+    /// <summary>Creates the statically allocated arena without resolving provider synchronization yet.</summary>
     StaticByteArena()=default;
     StaticByteArena(const StaticByteArena&)=delete;
     StaticByteArena& operator=(const StaticByteArena&)=delete;
     /// <summary>Resolves every synchronization primitive before the Running/no-allocation boundary.</summary>
     void Initialize() noexcept { std::apply([](auto&... c){(c.ResolveSynchronization(),...);},_classes); }
+    /// <summary>Number of configured size classes.</summary>
     static constexpr std::size_t ClassCount=sizeof...(TClasses);
+    /// <summary>Returns the largest contiguous payload size the arena can own.</summary>
     static constexpr std::size_t LargestSlotBytes() noexcept {
         return std::tuple_element_t<sizeof...(TClasses)-1,std::tuple<TClasses...>>::SlotBytes;
     }
@@ -194,11 +210,13 @@ public:
         if(requested>LargestSlotBytes()) return AdapterResourceStatus::TooLarge;
         return TryAcquireClassResult<0>(requested,output,AdapterResourceStatus::Exhausted);
     }
+    /// <summary>Releases one exact generation-safe slot identity; stale identities are rejected.</summary>
     bool Release(AdapterLeaseIdentity identity) noexcept {
         if(!identity || identity.ClassIndex>=sizeof...(TClasses)) return false;
         return ReleaseAt(identity);
     }
 #ifdef ESPRESSIO_ADAPTERS_TESTING
+    /// <summary>Test-only seam for forcing generation-exhaustion edge cases on an unoccupied slot.</summary>
     bool TestForceGeneration(std::uint16_t classIndex,std::uint16_t slotIndex,std::uint64_t generation) noexcept {
         return ForceGenerationAt(classIndex,slotIndex,generation);
     }

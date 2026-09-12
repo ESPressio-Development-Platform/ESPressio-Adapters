@@ -6,11 +6,14 @@
 
 namespace ESPressio::Adapters {
 
+/// <summary>Compile-time Q1 capacity facts for one concrete fixed domain type.</summary>
 template<class TDomain> struct AdapterCapacityDomainProfile;
 
 template<std::size_t TRecordBytes,std::size_t TRecordCount,class TByteArena>
 struct AdapterCapacityDomainProfile<StaticCapacityDomain<TRecordBytes,TRecordCount,TByteArena>> final {
+    /// <summary>Returns the largest contiguous payload slot available in this domain.</summary>
     static constexpr std::size_t LargestSlotBytes() noexcept { return TByteArena::LargestSlotBytes(); }
+    /// <summary>Runs deterministic additive record/byte fit validation against this domain's compile-time profile.</summary>
     template<std::size_t N>
     static constexpr CapacityFitResult Validate(
         const std::array<ProtectedCapacityRequirement,N>& requirements,std::size_t count=N) noexcept {
@@ -18,11 +21,13 @@ struct AdapterCapacityDomainProfile<StaticCapacityDomain<TRecordBytes,TRecordCou
     }
 };
 
+/// <summary>Compile-time Q1 capacity facts for one complete directional capacity plane.</summary>
 template<class TPlane> struct AdapterCapacityProfile;
 
 template<AdapterDirection TDirection,class TInfrastructure,class TClock,class TCritical,class TResponsive,
          class TConvergent,class TBestEffort,class TShared,class TUntrusted>
 struct AdapterCapacityProfile<CapacityPlane<TDirection,TInfrastructure,TClock,TCritical,TResponsive,TConvergent,TBestEffort,TShared,TUntrusted>> final {
+    /// <summary>Returns the largest private payload slot for one neutral service class; SharedOverflow is deliberately excluded from protected guarantees.</summary>
     static constexpr std::size_t PrivateLargestSlotBytes(AdapterServiceClass service) noexcept {
         switch(service){
             case AdapterServiceClass::Infrastructure:return AdapterCapacityDomainProfile<TInfrastructure>::LargestSlotBytes();
@@ -34,6 +39,7 @@ struct AdapterCapacityProfile<CapacityPlane<TDirection,TInfrastructure,TClock,TC
         }
         return 0;
     }
+    /// <summary>Validates the additive protected requirements for exactly one private service-class domain.</summary>
     template<std::size_t N>
     static constexpr CapacityFitResult ValidateProtectedRequirements(
         AdapterServiceClass service,const std::array<ProtectedCapacityRequirement,N>& requirements,std::size_t count=N) noexcept {

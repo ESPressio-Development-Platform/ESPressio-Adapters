@@ -23,6 +23,7 @@
     std::atomic<bool> _stopping{false};
     std::atomic<std::uint64_t> _staleTransportCompletions{0};
 
+    /// <summary>Validates the normalized finite P2 policy combinations supported by the generic Adapter runtime.</summary>
     static constexpr bool PolicyDescriptorValid(const Primitive::PrimitivePolicyDescriptor& p) noexcept {
         if(p.MaximumAttempts==0||p.MinimumRetrySpacingNanoseconds>p.MaximumRetrySpacingNanoseconds) return false;
         if(p.MaximumResidenceNanoseconds==0)
@@ -31,8 +32,10 @@
         return p.MaximumAdapterAdmissionWaitNanoseconds<=p.MaximumResidenceNanoseconds;
     }
 
+    /// <summary>Returns whether the Primitive policy requires semantic destination-admission evidence rather than transport acceptance only.</summary>
     static bool NeedsDestinationAdmission(const Primitive::PrimitivePolicyDescriptor& p) noexcept {return p.Evidence==1;}
 
+    /// <summary>Publishes one inbound terminal result through the optional fixed completion target, deriving evidence only from exact M1 semantics.</summary>
     static void CompleteInbound(AdapterWorkRecord& record,Primitive::PrimitiveAdmissionDisposition admission) noexcept {
         if(!record.InboundCompletion) return;
         const auto evidence=Primitive::EstablishesDestinationAdmission(admission)
@@ -40,16 +43,19 @@
         record.InboundCompletion.Complete(record.InboundCompletion.Owner,{record.Correlation,admission,evidence});
     }
 
+    /// <summary>Returns one outbound terminal/admission result to the exact frozen family binding without transferring ownership to application code.</summary>
     void FeedbackFamily(const AdapterWorkRecord& record,Primitive::PrimitiveAdmissionDisposition admission,AdapterEvidence evidence) noexcept {
         if(record.BindingIndex>=_bindings.Size()) return;
         const auto& binding=_bindings[record.BindingIndex];
         if(binding.Feedback) binding.Feedback(binding.Owner,{record.Correlation,admission,evidence});
     }
 
+    /// <summary>Emits/coalesces the fixed infrastructure wake so the owning integration can re-read generations/deadlines and perform bounded work.</summary>
     void WakeInfrastructure() noexcept {
         if(_capacityWake.Wake) _capacityWake.Wake(_capacityWake.Context);
     }
 
+    /// <summary>Proves that every enabled service mapping in one family binding fits the corresponding private-domain largest slot.</summary>
     template<class TCapacity>
     static bool FitsBindingDirection(const AdapterBindingDescriptor& binding,bool inbound) noexcept {
         const auto maximum=inbound?binding.MaximumInboundBytes:binding.MaximumOutboundBytes;
@@ -61,6 +67,7 @@
         return true;
     }
 
+    /// <summary>Runs the additive protected-capacity fit proof independently for every service class in one direction.</summary>
     template<class TCapacity>
     static bool ValidateRequirementsForDirection(
         AdapterDirection direction,const std::array<ProtectedCapacityRequirement,TMaximumRequirements>& all,std::size_t count) noexcept {
@@ -76,6 +83,7 @@
         return true;
     }
 
+    /// <summary>Publishes one already-owned trusted inbound bundle into the runtime queue bank and attempts one bounded refill quantum.</summary>
     AdapterSubmissionDisposition QueueInbound(CapacityRecordLease&& lease) noexcept {
         auto& record=lease.template Get<AdapterWorkRecord>();
         const auto result=_inboundQueues.TryPush(record.Service,record.BindingIndex,std::move(lease));
@@ -84,6 +92,7 @@
         return AdapterSubmissionDisposition::Accepted;
     }
 
+    /// <summary>Publishes one already-owned outbound bundle into the runtime queue bank and attempts one bounded refill quantum.</summary>
     AdapterSubmissionDisposition QueueOutbound(CapacityRecordLease&& lease) noexcept {
         auto& record=lease.template Get<AdapterWorkRecord>();
         const auto result=_outboundQueues.TryPush(record.Service,record.BindingIndex,std::move(lease));
@@ -92,6 +101,7 @@
         return AdapterSubmissionDisposition::Accepted;
     }
 
+    /// <summary>Moves outbound ownership into the fixed retained table and wakes the owner because a service deadline/lifecycle condition is now relevant.</summary>
     bool RetainOutbound(CapacityRecordLease& lease) noexcept {
         const auto stored=_outboundRetained.TryStore(std::move(lease));
         if(stored!=AdapterRetainedStatus::Success) return false;
@@ -99,12 +109,14 @@
         return true;
     }
 
+    /// <summary>Transitions one active pursuit record into finite WaitingForRetry using the policy's bounded retry-spacing contract.</summary>
     bool ScheduleRetry(AdapterWorkRecord& record,std::uint64_t now) noexcept {
         if(!record.Pursuit.ScheduleRetry(now,record.Policy.MinimumRetrySpacingNanoseconds)) return false;
         record.State=AdapterWorkState::WaitingForRetry;
         return true;
     }
 
+    /// <summary>Executes exactly one inbound T1 work quantum after physical ingress has already transferred byte ownership.</summary>
     void ExecuteInbound(WorkerItem& lease) noexcept {
         if(!lease) return;
         auto& record=lease.template Get<AdapterWorkRecord>();
@@ -121,6 +133,8 @@
         CompleteInbound(record,admission);
     }
 
+    /// <summary>Classifies one bounded UntrustedIngress record and, only if trusted, transactionally promotes its complete bytes into the validated Q1 class.</summary>
+    /// <remarks>Quarantine expiry is checked before classification and again before protected-capacity acquisition. Any promotion failure releases the quarantine item terminally rather than retaining two capacity bundles.</remarks>
     void ExecuteQuarantine(WorkerItem& lease) noexcept {
         auto& record=lease.template Get<AdapterWorkRecord>();
         const auto expired=[&record]() noexcept {
@@ -177,6 +191,7 @@
         record.State=AdapterWorkState::Complete;
     }
 
+    /// <summary>Executes exactly one outbound logical attempt and consumes lower-transport results without redefining Primitive M1 evidence semantics.</summary>
     void ExecuteOutbound(WorkerItem& lease) noexcept {
         if(!lease) return;
         auto& record=lease.template Get<AdapterWorkRecord>();
@@ -214,9 +229,12 @@
         }
     }
 
+    /// <summary>Refills inbound shared workers after one executing quantum releases a worker context.</summary>
     void OnInboundWorkerReleased(Worker&) noexcept {if(_running.load(std::memory_order_acquire))TryRefillInbound();}
+    /// <summary>Refills outbound shared workers after one executing quantum releases a worker context.</summary>
     void OnOutboundWorkerReleased(Worker&) noexcept {if(_running.load(std::memory_order_acquire))TryRefillOutbound();}
 
+    /// <summary>Attempts one nonblocking fair inbound assignment; normal trusted work is considered before quarantine work for this quantum.</summary>
     void TryRefillInbound() noexcept {
         if(!_running.load(std::memory_order_acquire))return;
         std::unique_lock<System::Synchronization::Mutex> refill(_inboundRefillMutex,std::try_to_lock);
@@ -230,6 +248,7 @@
         });
     }
 
+    /// <summary>Attempts one nonblocking fair outbound assignment from runtime-owned queues into a shared T1 worker.</summary>
     void TryRefillOutbound() noexcept {
         if(!_running.load(std::memory_order_acquire))return;
         std::unique_lock<System::Synchronization::Mutex> refill(_outboundRefillMutex,std::try_to_lock);

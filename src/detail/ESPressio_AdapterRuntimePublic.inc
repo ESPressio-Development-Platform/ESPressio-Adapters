@@ -1,15 +1,19 @@
+    /// <summary>Constructs an unconfigured Adapter runtime with no published ownership or worker state.</summary>
     AdapterRuntime()=default;
     AdapterRuntime(const AdapterRuntime&)=delete;
     AdapterRuntime& operator=(const AdapterRuntime&)=delete;
+    /// <summary>Best-effort safety shutdown for an initialized runtime; normal applications should call Shutdown explicitly.</summary>
     ~AdapterRuntime(){
         if(_initialized.load(std::memory_order_acquire)) (void)Shutdown();
     }
 
+    /// <summary>Adds one unique fixed family binding while Configuring.</summary>
     AdapterRuntimeStatus BindFamily(const AdapterBindingDescriptor& binding) noexcept {
         if(_initialized.load()) return AdapterRuntimeStatus::Frozen;
         return _bindings.Bind(binding);
     }
 
+    /// <summary>Binds the single generic lower-transport seam while Configuring.</summary>
     AdapterRuntimeStatus BindTransport(const LowerTransportBinding& transport) noexcept {
         if(_initialized.load()) return AdapterRuntimeStatus::Frozen;
         if(!transport) return AdapterRuntimeStatus::InvalidConfiguration;
@@ -17,6 +21,7 @@
         return AdapterRuntimeStatus::Success;
     }
 
+    /// <summary>Binds the optional bounded UntrustedIngress classifier while Configuring.</summary>
     AdapterRuntimeStatus BindClassifier(const QuarantineClassifierBinding& classifier) noexcept {
         if(_initialized.load()) return AdapterRuntimeStatus::Frozen;
         if(!classifier) return AdapterRuntimeStatus::InvalidConfiguration;
@@ -24,12 +29,14 @@
         return AdapterRuntimeStatus::Success;
     }
 
+    /// <summary>Binds the fixed infrastructure wake used for capacity release and due-service deadline changes.</summary>
     AdapterRuntimeStatus BindCapacityWake(CapacityWakeTarget wake) noexcept {
         if(_initialized.load()) return AdapterRuntimeStatus::Frozen;
         _capacityWake=wake;
         return AdapterRuntimeStatus::Success;
     }
 
+    /// <summary>Adds one finite additive protected-capacity requirement to the Initialize-time Q1 fit proof.</summary>
     AdapterRuntimeStatus AddProtectedRequirement(ProtectedCapacityRequirement requirement) noexcept {
         if(_initialized.load()) return AdapterRuntimeStatus::Frozen;
         if(!requirement.ConcurrentRecords || !requirement.MaximumOwnedBytes ||
@@ -39,6 +46,8 @@
         return AdapterRuntimeStatus::Success;
     }
 
+    /// <summary>Transactionally validates bindings/capacity, resolves synchronization/workers, then freezes the runtime without starting work.</summary>
+    /// <remarks>On failure no Running state is published. Successful initialization performs all canonical provider/synchronization setup before the no-allocation Running boundary.</remarks>
     AdapterRuntimeStatus Initialize(
         Task::TaskExecutionConfiguration inboundWorkers={},
         Task::TaskExecutionConfiguration outboundWorkers={}) {
@@ -126,6 +135,7 @@
         return AdapterRuntimeStatus::Success;
     }
 
+    /// <summary>Publishes Running and performs bounded initial refill from runtime-owned queues into shared T1 workers.</summary>
     AdapterRuntimeStatus Start() noexcept {
         if(!_initialized.load()) return AdapterRuntimeStatus::NotInitialized;
         if(_stopping.load()) return AdapterRuntimeStatus::Stopping;
@@ -135,6 +145,8 @@
         return AdapterRuntimeStatus::Success;
     }
 
+    /// <summary>Nonblocking trusted ingress handoff: copies borrowed bytes into a complete Q1 bundle and queues family execution off the physical callback.</summary>
+    /// <remarks>Accepted means the runtime owns an immutable complete copy. The caller's input buffer may be released immediately after this method returns.</remarks>
     AdapterSubmissionDisposition AdmitTrustedInbound(
         Primitive::PrimitiveFamilyId family,
         AdapterServiceClass service,
@@ -180,6 +192,8 @@
         return QueueInbound(std::move(lease));
     }
 
+    /// <summary>Nonblocking untrusted ingress handoff into the physically distinct inbound quarantine domain.</summary>
+    /// <remarks>The caller-supplied class/source claim cannot consume protected private capacity. The monotonic quarantineDeadline bounds retained residence before classification/promotion.</remarks>
     AdapterSubmissionDisposition AdmitUntrustedInbound(
         ImmediateTransportPeer peer,
         AdapterByteView borrowed,
@@ -224,6 +238,8 @@
         return AdapterSubmissionDisposition::Accepted;
     }
 
+    /// <summary>Synchronously encodes a family source into Adapter-owned bytes, seals the actual length, and queues independent outbound work.</summary>
+    /// <remarks>No source-object pointer is retained beyond the encode thunk. Accepted therefore permits the family to release its source storage immediately.</remarks>
     AdapterSubmissionDisposition SubmitOutbound(
         Primitive::PrimitiveFamilyId family,
         AdapterServiceClass service,
@@ -279,6 +295,7 @@
         return QueueOutbound(std::move(lease));
     }
 
+    /// <summary>Consumes one generation-correlated deferred lower-transport completion without allowing stale work to affect a reused record.</summary>
     AdapterSubmissionDisposition CompleteTransport(
         const LowerTransportCompletion& completion) noexcept {
         if(!_running.load(std::memory_order_acquire))
@@ -345,6 +362,8 @@
         return AdapterSubmissionDisposition::Accepted;
     }
 
+    /// <summary>Executes at most one bounded due-service quantum for expired or retry-eligible retained outbound work.</summary>
+    /// <remarks>The runtime owns no polling timer. The owner schedules this hook from EarliestServiceDeadline/wake integration.</remarks>
     AdapterRuntimeStatus ServiceDue(
         std::uint64_t now=System::Clock::Monotonic().NowNanoseconds()) noexcept {
         if(!_running.load(std::memory_order_acquire))
@@ -382,14 +401,17 @@
         return AdapterRuntimeStatus::Success;
     }
 
+    /// <summary>Returns the earliest retained retry-eligibility or transport hard deadline; no timer Task is created.</summary>
     AdapterServiceDeadline EarliestServiceDeadline() noexcept {
         return _outboundRetained.EarliestDeadline();
     }
 
+    /// <summary>Explicit lower-transport lifecycle wake allowing newly usable transport state to service already-retained due work.</summary>
     void TransportAvailabilityChanged() noexcept {
         if(_running.load()) (void)ServiceDue();
     }
 
+    /// <summary>Stops new submissions, quiesces lower ingress, drains queued/retained volatile ownership and waits only for already-executing T1 quanta.</summary>
     AdapterRuntimeStatus Shutdown() noexcept {
         if(!_initialized.load()) return AdapterRuntimeStatus::Success;
         if(_stopping.exchange(true)) return AdapterRuntimeStatus::Stopping;
@@ -419,18 +441,23 @@
         return AdapterRuntimeStatus::Success;
     }
 
+    /// <summary>Indicates whether transactional initialization completed successfully.</summary>
     bool IsInitialized() const noexcept {
         return _initialized.load(std::memory_order_acquire);
     }
+    /// <summary>Indicates whether new Adapter submissions and worker refill are currently enabled.</summary>
     bool IsRunning() const noexcept {
         return _running.load(std::memory_order_acquire);
     }
+    /// <summary>Returns the inbound capacity-release generation used with coalesced wake observation.</summary>
     CapacityGeneration InboundCapacityGeneration() const noexcept {
         return _inboundCapacity.Generation();
     }
+    /// <summary>Returns the outbound capacity-release generation used with coalesced wake observation.</summary>
     CapacityGeneration OutboundCapacityGeneration() const noexcept {
         return _outboundCapacity.Generation();
     }
+    /// <summary>Returns the bounded diagnostic count of stale/not-correlated lower-transport completions observed by this runtime.</summary>
     std::uint64_t StaleTransportCompletions() const noexcept {
         return _staleTransportCompletions.load();
     }

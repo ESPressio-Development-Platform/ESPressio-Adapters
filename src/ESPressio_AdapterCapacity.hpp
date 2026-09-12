@@ -15,11 +15,13 @@
 
 namespace ESPressio::Adapters {
 
+/// <summary>Fixed callback target invoked after one complete domain bundle release may have made capacity available.</summary>
 struct CapacityReleaseTarget final {
     void* Context=nullptr;
     void (*Release)(void*,CapacityDomainKind) noexcept=nullptr;
 };
 
+/// <summary>Move-only generation-safe ownership of one constructed record and its embedded ByteLease.</summary>
 class CapacityRecordLease final {
     void* _owner=nullptr;
     void (*_destroyRelease)(void*,std::byte*,std::uint16_t,std::uint64_t) noexcept=nullptr;
@@ -36,10 +38,13 @@ class CapacityRecordLease final {
       :_owner(owner),_destroyRelease(destroyRelease),_storage(storage),_capacity(capacity),_slot(slot),
        _generation(generation),_direction(direction),_domain(domain){}
 public:
+    /// <summary>Creates an empty non-owning record lease.</summary>
     CapacityRecordLease() noexcept=default;
     CapacityRecordLease(const CapacityRecordLease&)=delete;
     CapacityRecordLease& operator=(const CapacityRecordLease&)=delete;
+    /// <summary>Transfers exact record/domain generation ownership.</summary>
     CapacityRecordLease(CapacityRecordLease&& other) noexcept { *this=std::move(other); }
+    /// <summary>Releases any current record then transfers exact ownership from another lease.</summary>
     CapacityRecordLease& operator=(CapacityRecordLease&& other) noexcept {
         if(this==&other) return *this;
         Reset();
@@ -48,16 +53,27 @@ public:
         _slot=std::exchange(other._slot,0);_generation=std::exchange(other._generation,0);
         _direction=other._direction;_domain=other._domain;return *this;
     }
+    /// <summary>Destroys the constructed record and releases its exact domain generation.</summary>
     ~CapacityRecordLease(){Reset();}
+    /// <summary>Indicates whether this lease owns one valid constructed record generation.</summary>
     explicit operator bool() const noexcept{return _owner&&_destroyRelease&&_storage&&_generation;}
+    /// <summary>Returns the constructed record as T; callers must use the exact constructed type.</summary>
     template<class T> T& Get() noexcept {return *std::launder(reinterpret_cast<T*>(_storage));}
+    /// <summary>Returns the constructed record as const T; callers must use the exact constructed type.</summary>
     template<class T> const T& Get() const noexcept {return *std::launder(reinterpret_cast<const T*>(_storage));}
+    /// <summary>Returns the fixed record slot index.</summary>
     std::uint16_t Slot() const noexcept{return _slot;}
+    /// <summary>Returns the exact record slot generation.</summary>
     std::uint64_t Generation() const noexcept{return _generation;}
+    /// <summary>Returns the owning capacity-plane direction.</summary>
     AdapterDirection Direction() const noexcept{return _direction;}
+    /// <summary>Returns the exact private/shared/untrusted domain that owns the complete record+bytes bundle.</summary>
     CapacityDomainKind Domain() const noexcept{return _domain;}
+    /// <summary>Returns configured bytes available for placement-new record storage.</summary>
     std::size_t RecordCapacity() const noexcept{return _capacity;}
+    /// <summary>Returns the complete generation-safe adapter-record identity.</summary>
     AdapterRecordIdentity Identity() const noexcept{return {_direction,_domain,_slot,_generation};}
+    /// <summary>Destroys and releases the exact owned record generation; repeated reset is a no-op.</summary>
     void Reset() noexcept {
         if(!*this){_owner=nullptr;_destroyRelease=nullptr;_storage=nullptr;_capacity=0;_slot=0;_generation=0;return;}
         auto* owner=_owner;auto fn=_destroyRelease;auto* storage=_storage;auto slot=_slot;auto generation=_generation;
@@ -66,6 +82,8 @@ public:
     }
 };
 
+/// <summary>Move-only transactional claim of one record slot plus one fitting ByteLease from the same Q1 domain.</summary>
+/// <remarks>Destroying/resetting an uncommitted reservation rolls back every claimed resource immediately.</remarks>
 class CapacityReservation final {
     void* _owner=nullptr;
     void (*_rollback)(void*,std::uint16_t,std::uint64_t) noexcept=nullptr;
@@ -83,10 +101,13 @@ class CapacityReservation final {
       :_owner(owner),_rollback(rollback),_storage(storage),_capacity(capacity),_slot(slot),_generation(generation),
        _bytes(std::move(bytes)),_direction(direction),_domain(domain){}
 public:
+    /// <summary>Creates an empty reservation.</summary>
     CapacityReservation() noexcept=default;
     CapacityReservation(const CapacityReservation&)=delete;
     CapacityReservation& operator=(const CapacityReservation&)=delete;
+    /// <summary>Transfers the whole partial transaction without splitting record and byte ownership.</summary>
     CapacityReservation(CapacityReservation&& other) noexcept { *this=std::move(other); }
+    /// <summary>Rolls back any current transaction then transfers the whole reservation.</summary>
     CapacityReservation& operator=(CapacityReservation&& other) noexcept {
         if(this==&other)return *this;
         Reset();_owner=std::exchange(other._owner,nullptr);_rollback=std::exchange(other._rollback,nullptr);
@@ -94,12 +115,19 @@ public:
         _slot=std::exchange(other._slot,0);_generation=std::exchange(other._generation,0);_bytes=std::move(other._bytes);
         _direction=other._direction;_domain=other._domain;return *this;
     }
+    /// <summary>Rolls back the complete reservation unless Construct already consumed it.</summary>
     ~CapacityReservation(){Reset();}
+    /// <summary>Indicates whether this object owns both a record slot and byte slot from one domain.</summary>
     explicit operator bool() const noexcept{return _owner&&_rollback&&_storage&&_generation&&bool(_bytes);}
+    /// <summary>Returns mutable access to the exact same-domain byte lease for bounded encode/copy and commit.</summary>
     ByteLease& Bytes() noexcept{return _bytes;}
+    /// <summary>Returns immutable access to the exact same-domain byte lease.</summary>
     const ByteLease& Bytes() const noexcept{return _bytes;}
+    /// <summary>Returns the owning capacity-plane direction.</summary>
     AdapterDirection Direction() const noexcept{return _direction;}
+    /// <summary>Returns the exact private/shared/untrusted domain of this whole transaction.</summary>
     CapacityDomainKind Domain() const noexcept{return _domain;}
+    /// <summary>Rolls back bytes then the exact record generation and emits the domain release callback.</summary>
     void Reset() noexcept {
         if(!*this){_bytes.Reset();_owner=nullptr;_rollback=nullptr;_storage=nullptr;_capacity=0;_slot=0;_generation=0;return;}
         _bytes.Reset();auto* owner=_owner;auto rollback=_rollback;auto slot=_slot;auto generation=_generation;
@@ -107,6 +135,7 @@ public:
     }
 };
 
+/// <summary>One fixed Q1 capacity domain owning generation-safe record slots and a fixed A1 byte arena.</summary>
 template<std::size_t TRecordBytes,std::size_t TRecordCount,class TByteArena>
 class StaticCapacityDomain final {
     static_assert(TRecordBytes>0&&TRecordCount>0);
@@ -123,6 +152,7 @@ class StaticCapacityDomain final {
         std::launder(reinterpret_cast<TRecord*>(storage))->~TRecord();
         static_cast<StaticCapacityDomain*>(owner)->ReleaseSlot(slot,generation,true);
     }
+    /// <summary>Releases one exact record generation and optionally announces newly available domain capacity.</summary>
     bool ReleaseSlot(std::uint16_t index,std::uint64_t generation,bool notify) noexcept {
         {
             std::lock_guard<System::Synchronization::Mutex> lock(_mutex);
@@ -135,10 +165,14 @@ class StaticCapacityDomain final {
         return true;
     }
 public:
-    StaticCapacityDomain()=default;StaticCapacityDomain(const StaticCapacityDomain&)=delete;StaticCapacityDomain& operator=(const StaticCapacityDomain&)=delete;
+    StaticCapacityDomain()=default;
+    StaticCapacityDomain(const StaticCapacityDomain&)=delete;
+    StaticCapacityDomain& operator=(const StaticCapacityDomain&)=delete;
+    /// <summary>Freezes this domain's direction/kind/release target and resolves all synchronization before Running.</summary>
     void Initialize(AdapterDirection direction,CapacityDomainKind kind,CapacityReleaseTarget target={}) noexcept {
         _direction=direction;_kind=kind;_target=target;{std::lock_guard<System::Synchronization::Mutex> lock(_mutex);}_bytes.Initialize();
     }
+    /// <summary>Attempts one nonblocking whole-domain record+fitting-byte reservation; byte failure immediately rolls the record claim back.</summary>
     AdapterResourceStatus TryReserve(std::size_t bytes,CapacityReservation& output) noexcept {
         if(output)return AdapterResourceStatus::InvalidLease;
         std::uint16_t slotIndex=0;std::uint64_t generation=0;std::byte* storage=nullptr;
@@ -156,6 +190,7 @@ public:
         output=CapacityReservation(this,&RollbackThunk,storage,TRecordBytes,slotIndex,generation,std::move(byteLease),_direction,_kind);
         return AdapterResourceStatus::Success;
     }
+    /// <summary>Commits one already-sealed reservation into a nothrow-constructed record lease without moving either part to another domain.</summary>
     template<class TRecord,class... Args>
     AdapterResourceStatus Construct(CapacityReservation&& reservation,CapacityRecordLease& output,Args&&... args) noexcept {
         static_assert(sizeof(TRecord)<=TRecordBytes,"Adapter work record exceeds configured record bytes");
@@ -170,16 +205,22 @@ public:
         output=CapacityRecordLease(this,&DestroyReleaseThunk<TRecord>,storage,TRecordBytes,slot,generation,direction,domain);
         return AdapterResourceStatus::Success;
     }
+    /// <summary>Returns fixed record-slot count.</summary>
     static constexpr std::size_t RecordCount() noexcept{return TRecordCount;}
+    /// <summary>Returns bytes reserved for each placement-new record slot.</summary>
     static constexpr std::size_t RecordBytes() noexcept{return TRecordBytes;}
+    /// <summary>Returns largest contiguous payload slot in the domain's A1 arena.</summary>
     static constexpr std::size_t LargestSlotBytes() noexcept{return TByteArena::LargestSlotBytes();}
+    /// <summary>Returns the fixed byte size-class multiset for resource/fit accounting.</summary>
     static constexpr auto ByteShapes() noexcept{return TByteArena::Shapes();}
+    /// <summary>Proves simultaneous additive protected requirements against this domain's exact record and byte shape.</summary>
     template<std::size_t N>
     static constexpr CapacityFitResult ValidateRequirements(const std::array<ProtectedCapacityRequirement,N>& requirements,std::size_t count=N) noexcept {
         return ValidateCapacityFit(TByteArena::Shapes(),TRecordCount,requirements,count);
     }
 };
 
+/// <summary>Fixed infrastructure wake target coalesced by capacity release and A2 due-service transitions.</summary>
 struct CapacityWakeTarget final {void* Context=nullptr;void(*Wake)(void*) noexcept=nullptr;};
 
 namespace Detail {
@@ -187,6 +228,7 @@ template<AdapterDirection TDirection,class TUntrusted> struct UntrustedDomainHol
 template<class TUntrusted> struct UntrustedDomainHolder<AdapterDirection::Inbound,TUntrusted> { TUntrusted Domain{}; };
 }
 
+/// <summary>One complete directional Q1 capacity plane: six non-lendable private domains, SharedOverflow, and inbound-only UntrustedIngress.</summary>
 template<AdapterDirection TDirection,class TInfrastructure,class TClock,class TCritical,class TResponsive,
          class TConvergent,class TBestEffort,class TShared,class TUntrusted=void>
 class CapacityPlane final : private Detail::UntrustedDomainHolder<TDirection,TUntrusted> {
@@ -204,6 +246,7 @@ class CapacityPlane final : private Detail::UntrustedDomainHolder<TDirection,TUn
     std::atomic<std::uint64_t> _generation{0};
 
     static void ReleaseThunk(void* context,CapacityDomainKind) noexcept { static_cast<CapacityPlane*>(context)->Released(); }
+    /// <summary>Advances the non-wrapping release generation then emits the fixed wake; wake never reserves capacity.</summary>
     void Released() noexcept {
         auto current=_generation.load(std::memory_order_relaxed);
         while(current!=std::numeric_limits<std::uint64_t>::max() &&
@@ -222,7 +265,9 @@ public:
     CapacityPlane()=default;
     CapacityPlane(const CapacityPlane&)=delete;
     CapacityPlane& operator=(const CapacityPlane&)=delete;
+    /// <summary>Compile-time logical direction represented by this independent capacity plane.</summary>
     static constexpr AdapterDirection DirectionValue=TDirection;
+    /// <summary>Initializes every fixed domain with exact identity and the shared capacity-release generation/wake target.</summary>
     void Initialize(CapacityWakeTarget wake={}) noexcept {
         _wake=wake;
         const CapacityReleaseTarget target{this,&ReleaseThunk};
@@ -236,8 +281,10 @@ public:
         if constexpr(TDirection==AdapterDirection::Inbound)
             static_cast<UntrustedHolder&>(*this).Domain.Initialize(TDirection,CapacityDomainKind::UntrustedIngress,target);
     }
+    /// <summary>Returns the monotonic capacity-release generation observed for this direction.</summary>
     CapacityGeneration Generation() const noexcept { return {_generation.load(std::memory_order_acquire)}; }
 
+    /// <summary>Returns largest payload guaranteed by one service class's private domain; SharedOverflow is not part of the guarantee.</summary>
     static constexpr std::size_t PrivateLargestSlotBytes(AdapterServiceClass service) noexcept {
         switch(service){
             case AdapterServiceClass::Infrastructure:return TInfrastructure::LargestSlotBytes();
@@ -249,6 +296,7 @@ public:
         }
         return 0;
     }
+    /// <summary>Runs deterministic additive fit proof against the exact private domain for one service class.</summary>
     template<std::size_t N>
     static constexpr CapacityFitResult ValidateProtectedRequirements(AdapterServiceClass service,const std::array<ProtectedCapacityRequirement,N>& requirements,std::size_t count=N) noexcept {
         switch(service){
@@ -262,6 +310,7 @@ public:
         return {CapacityFitStatus::InvalidProfile,0};
     }
 
+    /// <summary>Attempts private-first trusted admission, falling back only to SharedOverflow and never borrowing another class's private reserve.</summary>
     AdapterResourceStatus TryAcquireTrusted(AdapterServiceClass service,std::size_t bytes,CapacityReservation& output) noexcept {
         AdapterResourceStatus primary=AdapterResourceStatus::InvalidConfiguration;
         switch(service) {
@@ -281,12 +330,14 @@ public:
         return AdapterResourceStatus::Exhausted;
     }
 
+    /// <summary>Attempts ownership only from inbound UntrustedIngress quarantine; outbound planes reject this operation.</summary>
     AdapterResourceStatus TryAcquireUntrusted(std::size_t bytes,CapacityReservation& output) noexcept {
         if constexpr(TDirection==AdapterDirection::Inbound)
             return TryDomain(static_cast<UntrustedHolder&>(*this).Domain,bytes,output);
         else { (void)bytes;(void)output;return AdapterResourceStatus::InvalidConfiguration; }
     }
 
+    /// <summary>Constructs one committed record in the exact domain already named by the reservation; record and bytes never split across domains.</summary>
     template<class TRecord,class... Args>
     AdapterResourceStatus Construct(CapacityReservation&& reservation,CapacityRecordLease& output,Args&&... args) noexcept {
         switch(reservation.Domain()) {
