@@ -10,6 +10,7 @@
 #include <utility>
 #include <ESPressio_Synchronization.hpp>
 #include "ESPressio_AdapterByteArena.hpp"
+#include "ESPressio_AdapterCapacityValidation.hpp"
 #include "ESPressio_AdapterTypes.hpp"
 
 namespace ESPressio::Adapters {
@@ -172,6 +173,11 @@ public:
     static constexpr std::size_t RecordCount() noexcept{return TRecordCount;}
     static constexpr std::size_t RecordBytes() noexcept{return TRecordBytes;}
     static constexpr std::size_t LargestSlotBytes() noexcept{return TByteArena::LargestSlotBytes();}
+    static constexpr auto ByteShapes() noexcept{return TByteArena::Shapes();}
+    template<std::size_t N>
+    static constexpr CapacityFitResult ValidateRequirements(const std::array<ProtectedCapacityRequirement,N>& requirements,std::size_t count=N) noexcept {
+        return ValidateCapacityFit(TByteArena::Shapes(),TRecordCount,requirements,count);
+    }
 };
 
 struct CapacityWakeTarget final {void* Context=nullptr;void(*Wake)(void*) noexcept=nullptr;};
@@ -231,6 +237,30 @@ public:
             static_cast<UntrustedHolder&>(*this).Domain.Initialize(TDirection,CapacityDomainKind::UntrustedIngress,target);
     }
     CapacityGeneration Generation() const noexcept { return {_generation.load(std::memory_order_acquire)}; }
+
+    static constexpr std::size_t PrivateLargestSlotBytes(AdapterServiceClass service) noexcept {
+        switch(service){
+            case AdapterServiceClass::Infrastructure:return TInfrastructure::LargestSlotBytes();
+            case AdapterServiceClass::Clock:return TClock::LargestSlotBytes();
+            case AdapterServiceClass::Critical:return TCritical::LargestSlotBytes();
+            case AdapterServiceClass::Responsive:return TResponsive::LargestSlotBytes();
+            case AdapterServiceClass::Convergent:return TConvergent::LargestSlotBytes();
+            case AdapterServiceClass::BestEffort:return TBestEffort::LargestSlotBytes();
+        }
+        return 0;
+    }
+    template<std::size_t N>
+    static constexpr CapacityFitResult ValidateProtectedRequirements(AdapterServiceClass service,const std::array<ProtectedCapacityRequirement,N>& requirements,std::size_t count=N) noexcept {
+        switch(service){
+            case AdapterServiceClass::Infrastructure:return TInfrastructure::ValidateRequirements(requirements,count);
+            case AdapterServiceClass::Clock:return TClock::ValidateRequirements(requirements,count);
+            case AdapterServiceClass::Critical:return TCritical::ValidateRequirements(requirements,count);
+            case AdapterServiceClass::Responsive:return TResponsive::ValidateRequirements(requirements,count);
+            case AdapterServiceClass::Convergent:return TConvergent::ValidateRequirements(requirements,count);
+            case AdapterServiceClass::BestEffort:return TBestEffort::ValidateRequirements(requirements,count);
+        }
+        return {CapacityFitStatus::InvalidProfile,0};
+    }
 
     AdapterResourceStatus TryAcquireTrusted(AdapterServiceClass service,std::size_t bytes,CapacityReservation& output) noexcept {
         AdapterResourceStatus primary=AdapterResourceStatus::InvalidConfiguration;
