@@ -123,6 +123,15 @@
 
     void ExecuteQuarantine(WorkerItem& lease) noexcept {
         auto& record=lease.template Get<AdapterWorkRecord>();
+        const auto expired=[&record]() noexcept {
+            return record.QuarantineDeadline!=0 &&
+                   System::Clock::Monotonic().NowNanoseconds()>=record.QuarantineDeadline;
+        };
+        if(expired()){
+            record.State=AdapterWorkState::Complete;
+            CompleteInbound(record,Primitive::PrimitiveAdmissionDisposition::ResourceUnavailable);
+            return;
+        }
         if(!_classifier){CompleteInbound(record,Primitive::PrimitiveAdmissionDisposition::Unsupported);record.State=AdapterWorkState::Complete;return;}
         TrustedIngressClassification classification{};
         const auto classified=_classifier.Classify(_classifier.Owner,record.QuarantinePeer,record.Bytes.View(),classification);
@@ -134,12 +143,22 @@
                     :Primitive::PrimitiveAdmissionDisposition::Rejected;
             record.State=AdapterWorkState::Complete;CompleteInbound(record,admission);return;
         }
+        if(expired()){
+            record.State=AdapterWorkState::Complete;
+            CompleteInbound(record,Primitive::PrimitiveAdmissionDisposition::ResourceUnavailable);
+            return;
+        }
         const auto* binding=_bindings.Find(classification.Family);
         const auto bindingIndex=_bindings.IndexOf(classification.Family);
         if(!binding||bindingIndex>=_bindings.Size()||!binding->HasInbound()||!binding->Protocols.Contains(classification.Protocol)||
            !binding->Supports(classification.Service)||!PolicyDescriptorValid(classification.Policy)||
            (binding->RequiresValidatedOriginalSource&&!classification.Provenance.OriginalSource)){
             record.State=AdapterWorkState::Complete;CompleteInbound(record,Primitive::PrimitiveAdmissionDisposition::Rejected);return;
+        }
+        if(expired()){
+            record.State=AdapterWorkState::Complete;
+            CompleteInbound(record,Primitive::PrimitiveAdmissionDisposition::ResourceUnavailable);
+            return;
         }
         CapacityReservation reservation;
         const auto reserve=_inboundCapacity.TryAcquireTrusted(classification.Service,record.Bytes.Length(),reservation);
