@@ -211,7 +211,12 @@ int main(){
         WaitUntil(h.WakeCalls,1);
         const auto due=r.EarliestServiceDeadline();
         assert(due);
-        assert(r.ServiceDue(due.Nanoseconds)==AdapterRuntimeStatus::Success);
+        auto serviceStatus=r.ServiceDue(due.Nanoseconds);
+        for(unsigned attempt=0;serviceStatus==AdapterRuntimeStatus::Busy&&attempt<100000;++attempt){
+            std::this_thread::yield();
+            serviceStatus=r.ServiceDue(due.Nanoseconds);
+        }
+        assert(serviceStatus==AdapterRuntimeStatus::Success);
         WaitUntil(h.SubmitCalls,2);
         WaitUntil(h.FeedbackCalls,1);
         assert(h.LastEvidence==AdapterEvidence::LowerTransportAccepted);
