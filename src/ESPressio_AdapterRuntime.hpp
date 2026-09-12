@@ -23,9 +23,9 @@ namespace ESPressio::Adapters {
 /// <summary>Family-neutral bounded Adapter ownership/runtime substrate for one compile-time deployment profile.</summary>
 /// <remarks>
 /// The runtime owns all admitted record/byte storage, fixed queues, retained pursuit state and shared T1 worker pools.
-/// Family/transport integrations are frozen raw-thunk bindings; no RTTI, std::function, growable retained container or
-/// post-Initialize heap fallback is required by the canonical hot paths. Inbound and outbound capacity planes remain
-/// physically/logically independent and all lower-transport/family entry points are nonblocking ownership handoffs.
+/// Family/transport integrations are frozen raw-thunk bindings; no RTTI, dynamic callable registry, growable retained
+/// container or post-Initialize heap fallback is required by the canonical hot paths. Inbound and outbound capacity
+/// planes remain physically/logically independent and all lower-transport/family entry points are nonblocking ownership handoffs.
 /// </remarks>
 template<class TInboundCapacity,class TOutboundCapacity,
          std::size_t TMaximumBindings,std::size_t TQueueDepth,
