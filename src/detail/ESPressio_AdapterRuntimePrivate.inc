@@ -46,6 +46,10 @@
         if(binding.Feedback) binding.Feedback(binding.Owner,{record.Correlation,admission,evidence});
     }
 
+    void WakeInfrastructure() noexcept {
+        if(_capacityWake.Wake) _capacityWake.Wake(_capacityWake.Context);
+    }
+
     template<class TCapacity>
     static bool FitsBindingDirection(const AdapterBindingDescriptor& binding,bool inbound) noexcept {
         const auto maximum=inbound?binding.MaximumInboundBytes:binding.MaximumOutboundBytes;
@@ -89,7 +93,10 @@
     }
 
     bool RetainOutbound(CapacityRecordLease& lease) noexcept {
-        return _outboundRetained.TryStore(std::move(lease))==AdapterRetainedStatus::Success;
+        const auto stored=_outboundRetained.TryStore(std::move(lease));
+        if(stored!=AdapterRetainedStatus::Success) return false;
+        WakeInfrastructure();
+        return true;
     }
 
     bool ScheduleRetry(AdapterWorkRecord& record,std::uint64_t now) noexcept {
