@@ -14,9 +14,11 @@
 
 namespace ESPressio::Adapters {
 
-struct CapacityReleaseTarget final { void* Context=nullptr; void (*Release)(void*,CapacityDomainKind) noexcept=nullptr; };
+struct CapacityReleaseTarget final {
+    void* Context=nullptr;
+    void (*Release)(void*,CapacityDomainKind) noexcept=nullptr;
+};
 
-/// <summary>Move-only ownership of one constructed adapter record and its exact complete-bundle generation.</summary>
 class CapacityRecordLease final {
     void* _owner=nullptr;
     void (*_destroyRelease)(void*,std::byte*,std::uint16_t,std::uint64_t) noexcept=nullptr;
@@ -63,7 +65,6 @@ public:
     }
 };
 
-/// <summary>Transient all-or-nothing claim of one record slot plus one same-domain byte lease.</summary>
 class CapacityReservation final {
     void* _owner=nullptr;
     void (*_rollback)(void*,std::uint16_t,std::uint64_t) noexcept=nullptr;
@@ -105,7 +106,6 @@ public:
     }
 };
 
-/// <summary>One fixed capacity domain whose record slots and byte arena are admitted as one transaction.</summary>
 template<std::size_t TRecordBytes,std::size_t TRecordCount,class TByteArena>
 class StaticCapacityDomain final {
     static_assert(TRecordBytes>0&&TRecordCount>0);
@@ -113,7 +113,9 @@ class StaticCapacityDomain final {
     std::array<Slot,TRecordCount> _slots{};TByteArena _bytes{};System::Synchronization::Mutex _mutex;
     AdapterDirection _direction=AdapterDirection::Inbound;CapacityDomainKind _kind=CapacityDomainKind::InfrastructurePrivate;
     CapacityReleaseTarget _target{};
-    static void RollbackThunk(void* owner,std::uint16_t slot,std::uint64_t generation) noexcept { static_cast<StaticCapacityDomain*>(owner)->ReleaseSlot(slot,generation,true); }
+    static void RollbackThunk(void* owner,std::uint16_t slot,std::uint64_t generation) noexcept {
+        static_cast<StaticCapacityDomain*>(owner)->ReleaseSlot(slot,generation,true);
+    }
     template<class TRecord>
     static void DestroyReleaseThunk(void* owner,std::byte* storage,std::uint16_t slot,std::uint64_t generation) noexcept {
         static_assert(std::is_nothrow_destructible_v<TRecord>);
@@ -136,7 +138,6 @@ public:
     void Initialize(AdapterDirection direction,CapacityDomainKind kind,CapacityReleaseTarget target={}) noexcept {
         _direction=direction;_kind=kind;_target=target;{std::lock_guard<System::Synchronization::Mutex> lock(_mutex);}_bytes.Initialize();
     }
-    /// <summary>Nonblocking complete-bundle reservation. Any byte failure immediately rolls the provisional record back.</summary>
     AdapterResourceStatus TryReserve(std::size_t bytes,CapacityReservation& output) noexcept {
         if(output)return AdapterResourceStatus::InvalidLease;
         std::uint16_t slotIndex=0;std::uint64_t generation=0;std::byte* storage=nullptr;
@@ -154,7 +155,6 @@ public:
         output=CapacityReservation(this,&RollbackThunk,storage,TRecordBytes,slotIndex,generation,std::move(byteLease),_direction,_kind);
         return AdapterResourceStatus::Success;
     }
-    /// <summary>Publishes one typed record only after its byte lease has been committed immutable.</summary>
     template<class TRecord,class... Args>
     AdapterResourceStatus Construct(CapacityReservation&& reservation,CapacityRecordLease& output,Args&&... args) noexcept {
         static_assert(sizeof(TRecord)<=TRecordBytes,"Adapter work record exceeds configured record bytes");
@@ -181,39 +181,57 @@ template<AdapterDirection TDirection,class TUntrusted> struct UntrustedDomainHol
 template<class TUntrusted> struct UntrustedDomainHolder<AdapterDirection::Inbound,TUntrusted> { TUntrusted Domain{}; };
 }
 
-/// <summary>Directional Q1 plane: six private domains, SharedOverflow, and inbound-only UntrustedIngress.</summary>
 template<AdapterDirection TDirection,class TInfrastructure,class TClock,class TCritical,class TResponsive,
          class TConvergent,class TBestEffort,class TShared,class TUntrusted=void>
 class CapacityPlane final : private Detail::UntrustedDomainHolder<TDirection,TUntrusted> {
-    static_assert(TDirection==AdapterDirection::Outbound || !std::is_void_v<TUntrusted>,"Inbound capacity plane requires an UntrustedIngress domain");
+    static_assert(TDirection==AdapterDirection::Outbound || !std::is_void_v<TUntrusted>,
+                  "Inbound capacity plane requires an UntrustedIngress domain");
     using UntrustedHolder=Detail::UntrustedDomainHolder<TDirection,TUntrusted>;
-    TInfrastructure _infrastructure{};TClock _clock{};TCritical _critical{};TResponsive _responsive{};
-    TConvergent _convergent{};TBestEffort _bestEffort{};TShared _shared{};CapacityWakeTarget _wake{};
+    TInfrastructure _infrastructure{};
+    TClock _clock{};
+    TCritical _critical{};
+    TResponsive _responsive{};
+    TConvergent _convergent{};
+    TBestEffort _bestEffort{};
+    TShared _shared{};
+    CapacityWakeTarget _wake{};
     std::atomic<std::uint64_t> _generation{0};
+
     static void ReleaseThunk(void* context,CapacityDomainKind) noexcept { static_cast<CapacityPlane*>(context)->Released(); }
     void Released() noexcept {
         auto current=_generation.load(std::memory_order_relaxed);
-        while(current!=std::numeric_limits<std::uint64_t>::max() && !_generation.compare_exchange_weak(current,current+1,std::memory_order_release,std::memory_order_relaxed)) {}
+        while(current!=std::numeric_limits<std::uint64_t>::max() &&
+              !_generation.compare_exchange_weak(current,current+1,std::memory_order_release,std::memory_order_relaxed)) {}
         if(_wake.Wake) _wake.Wake(_wake.Context);
     }
-    template<class TDomain> static AdapterResourceStatus TryDomain(TDomain& domain,std::size_t bytes,CapacityReservation& output) noexcept { return domain.TryReserve(bytes,output); }
+    template<class TDomain>
+    static AdapterResourceStatus TryDomain(TDomain& domain,std::size_t bytes,CapacityReservation& output) noexcept {
+        return domain.TryReserve(bytes,output);
+    }
     template<class TDomain,class TRecord,class... Args>
     static AdapterResourceStatus ConstructIn(TDomain& domain,CapacityReservation&& reservation,CapacityRecordLease& output,Args&&... args) noexcept {
         return domain.template Construct<TRecord>(std::move(reservation),output,std::forward<Args>(args)...);
     }
 public:
-    CapacityPlane() noexcept=default;CapacityPlane(const CapacityPlane&)=delete;CapacityPlane& operator=(const CapacityPlane&)=delete;
+    CapacityPlane()=default;
+    CapacityPlane(const CapacityPlane&)=delete;
+    CapacityPlane& operator=(const CapacityPlane&)=delete;
     static constexpr AdapterDirection DirectionValue=TDirection;
     void Initialize(CapacityWakeTarget wake={}) noexcept {
-        _wake=wake;const CapacityReleaseTarget target{this,&ReleaseThunk};
-        _infrastructure.Initialize(TDirection,CapacityDomainKind::InfrastructurePrivate,target);_clock.Initialize(TDirection,CapacityDomainKind::ClockPrivate,target);
-        _critical.Initialize(TDirection,CapacityDomainKind::CriticalPrivate,target);_responsive.Initialize(TDirection,CapacityDomainKind::ResponsivePrivate,target);
-        _convergent.Initialize(TDirection,CapacityDomainKind::ConvergentPrivate,target);_bestEffort.Initialize(TDirection,CapacityDomainKind::BestEffortPrivate,target);
+        _wake=wake;
+        const CapacityReleaseTarget target{this,&ReleaseThunk};
+        _infrastructure.Initialize(TDirection,CapacityDomainKind::InfrastructurePrivate,target);
+        _clock.Initialize(TDirection,CapacityDomainKind::ClockPrivate,target);
+        _critical.Initialize(TDirection,CapacityDomainKind::CriticalPrivate,target);
+        _responsive.Initialize(TDirection,CapacityDomainKind::ResponsivePrivate,target);
+        _convergent.Initialize(TDirection,CapacityDomainKind::ConvergentPrivate,target);
+        _bestEffort.Initialize(TDirection,CapacityDomainKind::BestEffortPrivate,target);
         _shared.Initialize(TDirection,CapacityDomainKind::SharedOverflow,target);
-        if constexpr(TDirection==AdapterDirection::Inbound) static_cast<UntrustedHolder&>(*this).Domain.Initialize(TDirection,CapacityDomainKind::UntrustedIngress,target);
+        if constexpr(TDirection==AdapterDirection::Inbound)
+            static_cast<UntrustedHolder&>(*this).Domain.Initialize(TDirection,CapacityDomainKind::UntrustedIngress,target);
     }
     CapacityGeneration Generation() const noexcept { return {_generation.load(std::memory_order_acquire)}; }
-    /// <summary>Private-first, then SharedOverflow; no request can borrow another service class's private domain.</summary>
+
     AdapterResourceStatus TryAcquireTrusted(AdapterServiceClass service,std::size_t bytes,CapacityReservation& output) noexcept {
         AdapterResourceStatus primary=AdapterResourceStatus::InvalidConfiguration;
         switch(service) {
@@ -227,14 +245,18 @@ public:
         if(primary==AdapterResourceStatus::Success || primary==AdapterResourceStatus::Busy) return primary;
         const auto shared=TryDomain(_shared,bytes,output);
         if(shared==AdapterResourceStatus::Success || shared==AdapterResourceStatus::Busy) return shared;
-        if(primary==AdapterResourceStatus::GenerationExhausted || shared==AdapterResourceStatus::GenerationExhausted) return AdapterResourceStatus::GenerationExhausted;
+        if(primary==AdapterResourceStatus::GenerationExhausted || shared==AdapterResourceStatus::GenerationExhausted)
+            return AdapterResourceStatus::GenerationExhausted;
         if(primary==AdapterResourceStatus::TooLarge && shared==AdapterResourceStatus::TooLarge) return AdapterResourceStatus::TooLarge;
         return AdapterResourceStatus::Exhausted;
     }
+
     AdapterResourceStatus TryAcquireUntrusted(std::size_t bytes,CapacityReservation& output) noexcept {
-        if constexpr(TDirection==AdapterDirection::Inbound) return TryDomain(static_cast<UntrustedHolder&>(*this).Domain,bytes,output);
+        if constexpr(TDirection==AdapterDirection::Inbound)
+            return TryDomain(static_cast<UntrustedHolder&>(*this).Domain,bytes,output);
         else { (void)bytes;(void)output;return AdapterResourceStatus::InvalidConfiguration; }
     }
+
     template<class TRecord,class... Args>
     AdapterResourceStatus Construct(CapacityReservation&& reservation,CapacityRecordLease& output,Args&&... args) noexcept {
         switch(reservation.Domain()) {
@@ -246,7 +268,8 @@ public:
             case CapacityDomainKind::BestEffortPrivate:return ConstructIn<TBestEffort,TRecord>(_bestEffort,std::move(reservation),output,std::forward<Args>(args)...);
             case CapacityDomainKind::SharedOverflow:return ConstructIn<TShared,TRecord>(_shared,std::move(reservation),output,std::forward<Args>(args)...);
             case CapacityDomainKind::UntrustedIngress:
-                if constexpr(TDirection==AdapterDirection::Inbound) return ConstructIn<TUntrusted,TRecord>(static_cast<UntrustedHolder&>(*this).Domain,std::move(reservation),output,std::forward<Args>(args)...);
+                if constexpr(TDirection==AdapterDirection::Inbound)
+                    return ConstructIn<TUntrusted,TRecord>(static_cast<UntrustedHolder&>(*this).Domain,std::move(reservation),output,std::forward<Args>(args)...);
                 else return AdapterResourceStatus::InvalidConfiguration;
         }
         return AdapterResourceStatus::InvalidConfiguration;
