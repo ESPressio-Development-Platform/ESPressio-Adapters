@@ -20,6 +20,8 @@ jobs:
         run: cmake --build build --parallel
       - name: Run generic Adapter contracts
         run: ctest --test-dir build --output-on-failure
+      - name: Publish Adapter resource accounting
+        run: ./build/adapter_resources
   esp32-surface:
     runs-on: ubuntu-latest
     steps:
@@ -52,6 +54,8 @@ jobs:
           using In=CapacityPlane<AdapterDirection::Inbound,Domain,Domain,Domain,Domain,Domain,Domain,Domain,Domain>;
           using Out=CapacityPlane<AdapterDirection::Outbound,Domain,Domain,Domain,Domain,Domain,Domain,Domain>;
           using Runtime=AdapterRuntime<In,Out,2,2,1,1,2>;
+          using Resources=AdapterRuntimeResourceAccounting<In,Out,2,2,1,1,2>;
+          static_assert(Resources::RuntimeObjectBytes==sizeof(Runtime));
           static ESPressio::Primitive::PrimitiveAdmissionDisposition admit(void*,ESPressio::Primitive::PrimitiveProtocolVersion,AdapterByteView,const AdapterSemanticProvenance&) noexcept { return ESPressio::Primitive::PrimitiveAdmissionDisposition::Accepted; }
           static AdapterEncodeResult encode(void*,ESPressio::Primitive::PrimitiveProtocolVersion,std::uint64_t,const void*,AdapterMutableByteView out) noexcept { if(!out.Capacity)return{};out.Data[0]=1;return{AdapterResourceStatus::Success,1}; }
           static bool validate(void*) noexcept { return true; }

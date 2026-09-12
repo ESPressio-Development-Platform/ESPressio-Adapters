@@ -14,3 +14,4 @@
 #include "ESPressio_AdapterRetained.hpp"
 #include "ESPressio_AdapterWorkerPool.hpp"
 #include "ESPressio_AdapterRuntime.hpp"
+#include "ESPressio_AdapterResources.hpp"
