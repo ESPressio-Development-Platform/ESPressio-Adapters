@@ -1,0 +1,57 @@
+name: Adapters architecture contracts
+on:
+  push:
+    branches: [primitives_redesign]
+  pull_request:
+jobs:
+  host-contracts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with: {repository: ESPressio-Development-Platform/ESPressio-System, ref: primitives_redesign, path: deps/ESPressio-System}
+      - uses: actions/checkout@v4
+        with: {repository: ESPressio-Development-Platform/ESPressio-Primitive, ref: primitives_redesign, path: deps/ESPressio-Primitive}
+      - uses: actions/checkout@v4
+        with: {repository: ESPressio-Development-Platform/ESPressio-Task, ref: primitives_redesign, path: deps/ESPressio-Task}
+      - name: Configure generic Adapter contracts
+        run: cmake -S tests -B build -DESPRESSIO_DEPENDENCIES="$GITHUB_WORKSPACE/deps"
+      - name: Build generic Adapter contracts
+        run: cmake --build build --parallel
+      - name: Run generic Adapter contracts
+        run: ctest --test-dir build --output-on-failure
+  esp32-surface:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.x'}
+      - run: pip install platformio
+      - name: Compile A1/Q1 surface without RTTI
+        run: |
+          mkdir -p /tmp/adapters/src
+          cat > /tmp/adapters/platformio.ini <<'PIO'
+          [env:esp32dev]
+          platform = espressif32
+          board = esp32dev
+          framework = arduino
+          lib_deps =
+              file://${{ github.workspace }}
+              https://github.com/ESPressio-Development-Platform/ESPressio-System.git#primitives_redesign
+              https://github.com/ESPressio-Development-Platform/ESPressio-Primitive.git#primitives_redesign
+              https://github.com/ESPressio-Development-Platform/ESPressio-Task.git#primitives_redesign
+          build_unflags = -std=gnu++11 -frtti
+          build_flags = -std=gnu++17 -fno-rtti
+          PIO
+          cat > /tmp/adapters/src/main.cpp <<'CPP'
+          #include <Arduino.h>
+          #include <ESPressio_Adapters.hpp>
+          using namespace ESPressio::Adapters;
+          using Arena=StaticByteArena<ByteClass<32,2>,ByteClass<128,1>>;
+          using Domain=StaticCapacityDomain<128,2,Arena>;
+          using Plane=CapacityPlane<AdapterDirection::Outbound,Domain,Domain,Domain,Domain,Domain,Domain,Domain>;
+          Plane plane;
+          void setup(){plane.Initialize();}
+          void loop(){}
+          CPP
+          pio run -d /tmp/adapters

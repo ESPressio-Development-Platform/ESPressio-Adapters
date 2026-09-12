@@ -1,0 +1,5 @@
+set(COMPONENT_SRCDIRS "src")
+set(COMPONENT_ADD_INCLUDEDIRS "src")
+set(COMPONENT_REQUIRES "ESPressio_System" "ESPressio_Primitive" "ESPressio_Task")
+register_component()
+target_compile_features(${COMPONENT_TARGET} PUBLIC cxx_std_17)
