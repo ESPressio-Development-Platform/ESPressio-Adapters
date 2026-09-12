@@ -27,7 +27,7 @@ jobs:
       - uses: actions/setup-python@v5
         with: {python-version: '3.x'}
       - run: pip install platformio
-      - name: Compile A1/Q1 surface without RTTI
+      - name: Compile full A1/Q1/A2 surface without RTTI
         run: |
           mkdir -p /tmp/adapters/src
           cat > /tmp/adapters/platformio.ini <<'PIO'
@@ -47,11 +47,18 @@ jobs:
           #include <Arduino.h>
           #include <ESPressio_Adapters.hpp>
           using namespace ESPressio::Adapters;
-          using Arena=StaticByteArena<ByteClass<32,2>,ByteClass<128,1>>;
-          using Domain=StaticCapacityDomain<128,2,Arena>;
-          using Plane=CapacityPlane<AdapterDirection::Outbound,Domain,Domain,Domain,Domain,Domain,Domain,Domain>;
-          Plane plane;
-          void setup(){plane.Initialize();}
+          using Arena=StaticByteArena<ByteClass<128,1>>;
+          using Domain=StaticCapacityDomain<512,1,Arena>;
+          using In=CapacityPlane<AdapterDirection::Inbound,Domain,Domain,Domain,Domain,Domain,Domain,Domain,Domain>;
+          using Out=CapacityPlane<AdapterDirection::Outbound,Domain,Domain,Domain,Domain,Domain,Domain,Domain>;
+          using Runtime=AdapterRuntime<In,Out,2,2,1,1,2>;
+          static ESPressio::Primitive::PrimitiveAdmissionDisposition admit(void*,ESPressio::Primitive::PrimitiveProtocolVersion,AdapterByteView,const AdapterSemanticProvenance&) noexcept { return ESPressio::Primitive::PrimitiveAdmissionDisposition::Accepted; }
+          static AdapterEncodeResult encode(void*,ESPressio::Primitive::PrimitiveProtocolVersion,std::uint64_t,const void*,AdapterMutableByteView out) noexcept { if(!out.Capacity)return{};out.Data[0]=1;return{AdapterResourceStatus::Success,1}; }
+          static bool validate(void*) noexcept { return true; }
+          static LowerTransportSubmitResult submit(void*,AdapterRecordIdentity,AdapterServiceClass,AdapterByteView,AdapterRouteToken) noexcept { return{LowerTransportDisposition::Accepted,1,false}; }
+          Runtime runtime;
+          int owner=0;
+          void setup(){AdapterBindingDescriptor binding{};binding.Family=1;binding.Protocols={1,1};binding.MaximumInboundBytes=64;binding.MaximumOutboundBytes=64;binding.ServiceClassMask=std::uint8_t{1}<<static_cast<unsigned>(AdapterServiceClass::Responsive);binding.Owner=&owner;binding.AdmitInbound=&admit;binding.EncodeOutbound=&encode;LowerTransportBinding transport{};transport.Owner=&owner;transport.Submit=&submit;transport.Validate=&validate;transport.ServiceClassMask=0x3f;(void)runtime.BindFamily(binding);(void)runtime.BindTransport(transport);(void)runtime.Initialize();(void)runtime.Start();}
           void loop(){}
           CPP
           pio run -d /tmp/adapters

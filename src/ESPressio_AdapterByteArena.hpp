@@ -180,8 +180,13 @@ public:
     StaticByteArena& operator=(const StaticByteArena&)=delete;
     /// <summary>Resolves every synchronization primitive before the Running/no-allocation boundary.</summary>
     void Initialize() noexcept { std::apply([](auto&... c){(c.ResolveSynchronization(),...);},_classes); }
+    static constexpr std::size_t ClassCount=sizeof...(TClasses);
     static constexpr std::size_t LargestSlotBytes() noexcept {
         return std::tuple_element_t<sizeof...(TClasses)-1,std::tuple<TClasses...>>::SlotBytes;
+    }
+    /// <summary>Returns the immutable compile-time shape used by deterministic capacity-fit validation.</summary>
+    static constexpr std::array<AdapterByteClassShape,ClassCount> Shapes() noexcept {
+        return {{{TClasses::SlotBytes,TClasses::SlotCount}...}};
     }
     /// <summary>Attempts one nonblocking smallest-fit allocation; no chaining, growth or heap fallback occurs.</summary>
     AdapterResourceStatus TryAcquire(std::size_t requested,ByteLease& output) noexcept {

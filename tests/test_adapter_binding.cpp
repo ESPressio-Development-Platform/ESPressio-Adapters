@@ -1,0 +1,6 @@
+#include <ESPressio_AdapterBinding.hpp>
+#include <cassert>
+using namespace ESPressio::Adapters;
+static ESPressio::Primitive::PrimitiveAdmissionDisposition Admit(void*,ESPressio::Primitive::PrimitiveProtocolVersion,AdapterByteView,const AdapterSemanticProvenance&) noexcept{return ESPressio::Primitive::PrimitiveAdmissionDisposition::Accepted;}
+static AdapterEncodeResult Encode(void*,ESPressio::Primitive::PrimitiveProtocolVersion,std::uint64_t,const void*,AdapterMutableByteView out) noexcept{return {AdapterResourceStatus::Success,out.Capacity?1u:0u};}
+int main(){int owner=0;AdapterBindingDescriptor a{};a.Family=1;a.Protocols={1,2};a.MaximumInboundBytes=32;a.MaximumOutboundBytes=64;a.ServiceClassMask=(1u<<static_cast<unsigned>(AdapterServiceClass::Critical));a.Owner=&owner;a.AdmitInbound=&Admit;a.EncodeOutbound=&Encode;assert(a.IsValid()&&a.Supports(AdapterServiceClass::Critical)&&!a.Supports(AdapterServiceClass::Responsive));AdapterBindingTable<2> table;assert(table.Bind(a)==AdapterRuntimeStatus::Success);assert(table.Bind(a)==AdapterRuntimeStatus::DuplicateFamily);assert(table.IndexOf(1)==0);auto b=a;b.Family=2;assert(table.Bind(b)==AdapterRuntimeStatus::Success);assert(table.Freeze()==AdapterRuntimeStatus::Success);b.Family=3;assert(table.Bind(b)==AdapterRuntimeStatus::Frozen);}

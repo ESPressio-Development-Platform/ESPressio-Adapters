@@ -1,0 +1,4 @@
+#include <ESPressio_AdapterPursuit.hpp>
+#include <cassert>
+using namespace ESPressio::Adapters;
+int main(){ESPressio::Primitive::PrimitivePolicyDescriptor p{};p.MaximumResidenceNanoseconds=100;p.MaximumAttempts=3;p.MaximumAdapterAdmissionWaitNanoseconds=20;p.MinimumRetrySpacingNanoseconds=5;p.MaximumRetrySpacingNanoseconds=30;AdapterPursuitState s;assert(s.Start(p,1000));assert(s.HardDeadline()==1100);assert(s.BeginLogicalAttempt(1000)&&s.Attempts()==1&&s.AdmissionDeadline()==1020);s.FragmentRetry();assert(s.Attempts()==1);assert(s.ScheduleRetry(1001,1)&&s.NextEligible()==1006);assert(!s.Due(1005)&&s.Due(1006));assert(s.BeginLogicalAttempt(1006)&&s.Attempts()==2);assert(s.ScheduleRetry(1006,100)&&s.NextEligible()==1036);assert(s.BeginLogicalAttempt(1036)&&s.Attempts()==3);assert(!s.ScheduleRetry(1036,5)&&s.IsExhausted());}

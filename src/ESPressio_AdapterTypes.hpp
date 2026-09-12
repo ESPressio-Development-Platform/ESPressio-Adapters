@@ -1,6 +1,7 @@
 #pragma once
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 
 namespace ESPressio::Adapters {
 
@@ -35,8 +36,33 @@ enum class AdapterResourceStatus : std::uint8_t {
 enum class AdapterRuntimeStatus : std::uint8_t {
     Success, AlreadyInitialized, NotInitialized, NotRunning, Stopping, Frozen, Busy,
     InvalidConfiguration, DuplicateFamily, MissingWorkerTopology, RepresentationTooLarge,
-    EvidenceUnavailable, ProvenanceUnavailable, ServiceMappingUnavailable, ResourceUnavailable
+    EvidenceUnavailable, ProvenanceUnavailable, ServiceMappingUnavailable, ResourceUnavailable,
+    WorkerInitializationFailed, TransportUnavailable
 };
+
+/// <summary>Nonblocking family-to-adapter ownership result. Accepted means the adapter owns the complete submission.</summary>
+enum class AdapterSubmissionDisposition : std::uint8_t {
+    Accepted, Busy, ResourceUnavailable, RepresentationTooLarge, Unsupported,
+    InvalidConfiguration, NotRunning, Rejected, Malformed
+};
+constexpr bool AdapterOwnsSubmission(AdapterSubmissionDisposition value) noexcept {
+    return value==AdapterSubmissionDisposition::Accepted;
+}
+constexpr AdapterSubmissionDisposition ToSubmissionDisposition(AdapterResourceStatus value) noexcept {
+    switch(value){
+        case AdapterResourceStatus::Success:return AdapterSubmissionDisposition::Accepted;
+        case AdapterResourceStatus::Busy:return AdapterSubmissionDisposition::Busy;
+        case AdapterResourceStatus::TooLarge:return AdapterSubmissionDisposition::RepresentationTooLarge;
+        case AdapterResourceStatus::InvalidConfiguration:
+        case AdapterResourceStatus::InvalidLength:
+        case AdapterResourceStatus::AlreadyCommitted:
+        case AdapterResourceStatus::InvalidLease:return AdapterSubmissionDisposition::InvalidConfiguration;
+        case AdapterResourceStatus::Exhausted:
+        case AdapterResourceStatus::GenerationExhausted:
+        case AdapterResourceStatus::ResourceUnavailable:return AdapterSubmissionDisposition::ResourceUnavailable;
+    }
+    return AdapterSubmissionDisposition::ResourceUnavailable;
+}
 
 enum class AdapterWorkState : std::uint8_t {
     Free, Queued, AssignedToWorker, Executing, WaitingForTransport, WaitingForRetry, Complete
@@ -86,6 +112,37 @@ struct AdapterRecordIdentity final {
         return Direction==other.Direction && Domain==other.Domain && Slot==other.Slot && Generation==other.Generation;
     }
     constexpr bool operator!=(const AdapterRecordIdentity& other) const noexcept { return !(*this==other); }
+};
+
+/// <summary>One compile-time byte size class used by protected-capacity validation.</summary>
+struct AdapterByteClassShape final {
+    std::size_t SlotBytes=0;
+    std::size_t SlotCount=0;
+};
+
+/// <summary>One additive protected-capacity requirement retained simultaneously by one domain.</summary>
+struct ProtectedCapacityRequirement final {
+    AdapterDirection Direction=AdapterDirection::Inbound;
+    AdapterServiceClass Service=AdapterServiceClass::BestEffort;
+    std::size_t ConcurrentRecords=0;
+    std::size_t MaximumOwnedBytes=0;
+};
+
+enum class CapacityFitStatus : std::uint8_t {
+    Success, InvalidProfile, RecordShortage, ByteSlotShortage
+};
+struct CapacityFitResult final {
+    CapacityFitStatus Status=CapacityFitStatus::InvalidProfile;
+    std::size_t RequiredRecords=0;
+    constexpr explicit operator bool() const noexcept { return Status==CapacityFitStatus::Success; }
+};
+
+/// <summary>Monotonic adapter service deadline; max means no earlier due time is known.</summary>
+struct AdapterServiceDeadline final {
+    std::uint64_t Nanoseconds=std::numeric_limits<std::uint64_t>::max();
+    constexpr explicit operator bool() const noexcept {
+        return Nanoseconds!=std::numeric_limits<std::uint64_t>::max();
+    }
 };
 
 } // namespace ESPressio::Adapters
