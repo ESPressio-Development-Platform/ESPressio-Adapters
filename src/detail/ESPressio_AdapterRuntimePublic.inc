@@ -287,6 +287,7 @@
         CapacityRecordLease terminal;
         const auto now=System::Clock::Monotonic().NowNanoseconds();
         bool staleAttempt=false;
+        bool retryScheduled=false;
         const auto status=_outboundRetained.TryVisitExact(
             completion.Record,
             [&](AdapterWorkRecord& record) noexcept {
@@ -317,6 +318,7 @@
                     record.State=AdapterWorkState::Complete;
                     return true;
                 }
+                retryScheduled=true;
                 return false;
             },
             terminal);
@@ -337,6 +339,8 @@
             else
                 FeedbackFamily(
                     record,Primitive::PrimitiveAdmissionDisposition::Rejected,record.Evidence);
+        } else if(retryScheduled) {
+            WakeInfrastructure();
         }
         return AdapterSubmissionDisposition::Accepted;
     }
@@ -356,6 +360,7 @@
             if(_transport.Cancel) _transport.Cancel(_transport.Owner,identity);
             FeedbackFamily(
                 record,Primitive::PrimitiveAdmissionDisposition::ResourceUnavailable,record.Evidence);
+            WakeInfrastructure();
             return AdapterRuntimeStatus::Success;
         }
 
@@ -371,6 +376,7 @@
             return AdapterRuntimeStatus::Busy;
         if(status==AdapterRetainedStatus::Success){
             TryRefillOutbound();
+            WakeInfrastructure();
             return AdapterRuntimeStatus::Success;
         }
         return AdapterRuntimeStatus::Success;
