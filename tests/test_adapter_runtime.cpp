@@ -227,7 +227,8 @@ int main(){
         assert(r.Start()==AdapterRuntimeStatus::Success);
         std::uint8_t source=55;
         AdapterInboundCompletionTarget receipt{&h,&Harness::Complete};
-        assert(r.AdmitUntrustedInbound({7},{&source,1},1000000,80,receipt)==AdapterSubmissionDisposition::Accepted);
+        const auto deadline=ESPressio::System::Clock::Monotonic().NowNanoseconds()+1'000'000'000ULL;
+        assert(r.AdmitUntrustedInbound({7},{&source,1},deadline,80,receipt)==AdapterSubmissionDisposition::Accepted);
         assert(h.ClassifierCalls==0&&h.AdmitCalls==0);
         source=1;
         host.ResumeGate();
