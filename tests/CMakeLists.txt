@@ -42,3 +42,6 @@ add_test(NAME adapter_compile_fail_byte_lease_copy
     COMMAND ${CMAKE_CXX_COMPILER} -std=c++17 -fno-rtti -Wall -Wextra -Werror -fsyntax-only ${COMPILE_INCLUDES}
             "${CMAKE_CURRENT_LIST_DIR}/negative/byte_lease_copy.cpp")
 set_tests_properties(adapter_compile_fail_byte_lease_copy PROPERTIES WILL_FAIL TRUE)
+add_test(NAME adapter_example_mock_runtime_compile
+    COMMAND ${CMAKE_CXX_COMPILER} -std=c++17 -fno-rtti -Wall -Wextra -Werror -fsyntax-only ${COMPILE_INCLUDES}
+            "${CMAKE_CURRENT_LIST_DIR}/../examples/MockAdapterRuntime/mock_adapter_runtime.cpp")
