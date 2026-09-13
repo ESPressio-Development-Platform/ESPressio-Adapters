@@ -258,8 +258,6 @@
         if(!binding->Supports(service) || !binding->Protocols.Contains(protocol) ||
            !PolicyDescriptorValid(policy))
             return AdapterSubmissionDisposition::InvalidConfiguration;
-        if(binding->RequiresDestinationAdmissionEvidence && !NeedsDestinationAdmission(policy))
-            return AdapterSubmissionDisposition::InvalidConfiguration;
         if(NeedsDestinationAdmission(policy) &&
            (!_transport || !_transport.ProvidesDestinationPrimitiveAdmission))
             return AdapterSubmissionDisposition::Unsupported;
