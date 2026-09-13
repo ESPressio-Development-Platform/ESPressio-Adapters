@@ -1,6 +1,7 @@
 #pragma once
 #include <cstdint>
 #include <ESPressio_PrimitiveAdmission.hpp>
+#include <ESPressio_PrimitiveTypes.hpp>
 #include "ESPressio_AdapterTypes.hpp"
 namespace ESPressio::Adapters {
 
@@ -45,8 +46,17 @@ struct AdapterInboundCompletionTarget final {
     constexpr explicit operator bool() const noexcept{return Owner&&Complete;}
 };
 
-/// <summary>Fixed non-owning thunk that accepts immutable complete Adapter bytes for lower-transport ownership.</summary>
-using LowerTransportSubmitThunk=LowerTransportSubmitResult(*)(void*,AdapterRecordIdentity,AdapterServiceClass,AdapterByteView,AdapterRouteToken) noexcept;
+/// <summary>
+/// Fixed non-owning thunk that accepts immutable complete Adapter bytes plus neutral Primitive family/version metadata.
+/// </summary>
+/// <remarks>
+/// Family/version are semantic routing metadata already owned by A2; exposing them here does not make generic Adapters
+/// aware of any concrete transport framing. A concrete integration such as RadioAdapters may encode its own transport
+/// envelope without forcing family encoders to become transport-specific.
+/// </remarks>
+using LowerTransportSubmitThunk=LowerTransportSubmitResult(*)(
+    void*,AdapterRecordIdentity,Primitive::PrimitiveFamilyId,Primitive::PrimitiveProtocolVersion,
+    AdapterServiceClass,AdapterByteView,AdapterRouteToken) noexcept;
 /// <summary>Fixed non-owning thunk that reports whether the bound lower transport is currently usable.</summary>
 using LowerTransportValidateThunk=bool(*)(void*) noexcept;
 /// <summary>Optional fixed thunk used to abandon a retained deferred lower-transport operation.</summary>
