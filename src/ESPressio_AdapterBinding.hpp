@@ -5,6 +5,7 @@
 #include <ESPressio_PrimitiveAdmission.hpp>
 #include <ESPressio_PrimitiveTypes.hpp>
 #include "ESPressio_AdapterProvenance.hpp"
+#include "ESPressio_AdapterTransport.hpp"
 #include "ESPressio_AdapterTypes.hpp"
 namespace ESPressio::Adapters {
 
@@ -23,8 +24,10 @@ struct AdapterFamilyFeedback final {
     AdapterEvidence Evidence=AdapterEvidence::None;
 };
 
-/// <summary>Fixed inbound family admission thunk consuming immutable complete bytes and normalized provenance.</summary>
-using AdapterInboundAdmissionThunk=Primitive::PrimitiveAdmissionDisposition(*)(void*,Primitive::PrimitiveProtocolVersion,AdapterByteView,const AdapterSemanticProvenance&) noexcept;
+/// <summary>Fixed inbound family admission thunk consuming immutable complete bytes, normalized provenance and opaque route context.</summary>
+/// <remarks>The route token is transport integration state already captured by A2; it is never semantic provenance and may be ignored by families that require no reply/convergence route.</remarks>
+using AdapterInboundAdmissionThunk=Primitive::PrimitiveAdmissionDisposition(*)(
+    void*,Primitive::PrimitiveProtocolVersion,AdapterByteView,const AdapterSemanticProvenance&,AdapterRouteToken) noexcept;
 /// <summary>Fixed synchronous family encoder; source lifetime ends when this call returns.</summary>
 using AdapterOutboundEncodeThunk=AdapterEncodeResult(*)(void*,Primitive::PrimitiveProtocolVersion,std::uint64_t,const void*,AdapterMutableByteView) noexcept;
 /// <summary>Fixed terminal outbound feedback thunk.</summary>
@@ -72,7 +75,7 @@ class AdapterBindingTable final {
     std::size_t _count=0;
     bool _frozen=false;
 public:
-    /// <summary>Adds one unique family binding while Configuring; no live growth or heap allocation occurs.</summary>
+    /// <summary>Adds one unique fixed family binding while Configuring; no live growth or heap allocation occurs.</summary>
     AdapterRuntimeStatus Bind(const AdapterBindingDescriptor& binding) noexcept {
         if(_frozen)return AdapterRuntimeStatus::Frozen;
         if(!binding.IsValid())return AdapterRuntimeStatus::InvalidConfiguration;
