@@ -36,7 +36,11 @@ void FeedbackExample(void*,const AdapterFamilyFeedback&) noexcept {}
 bool ValidateTransport(void*) noexcept { return true; }
 
 LowerTransportSubmitResult SubmitTransport(
-    void*,AdapterRecordIdentity,AdapterServiceClass,AdapterByteView,AdapterRouteToken) noexcept {
+    void*,AdapterRecordIdentity,
+    ESPressio::Primitive::PrimitiveFamilyId,
+    ESPressio::Primitive::PrimitiveProtocolVersion,
+    const ESPressio::Primitive::PrimitivePolicyDescriptor&,
+    AdapterServiceClass,AdapterByteView,AdapterRouteToken) noexcept {
     return {LowerTransportDisposition::Accepted,1,false};
 }
 
