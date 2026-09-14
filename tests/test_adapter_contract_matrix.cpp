@@ -56,7 +56,11 @@ struct Harness final {
     }
     static bool Validate(void*) noexcept { return true; }
     static LowerTransportSubmitResult Submit(
-        void*,AdapterRecordIdentity,AdapterServiceClass,AdapterByteView,AdapterRouteToken) noexcept {
+        void*,AdapterRecordIdentity,
+        ESPressio::Primitive::PrimitiveFamilyId,
+        ESPressio::Primitive::PrimitiveProtocolVersion,
+        const ESPressio::Primitive::PrimitivePolicyDescriptor&,
+        AdapterServiceClass,AdapterByteView,AdapterRouteToken) noexcept {
         return {LowerTransportDisposition::Accepted,1,false};
     }
     static IngressClassificationStatus Classify(
