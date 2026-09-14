@@ -34,8 +34,11 @@ struct Harness final {
     static bool Validate(void*) noexcept { return true; }
 
     static LowerTransportSubmitResult Submit(
-        void* owner,AdapterRecordIdentity,AdapterServiceClass,AdapterByteView,
-        AdapterRouteToken) noexcept {
+        void* owner,AdapterRecordIdentity,
+        ESPressio::Primitive::PrimitiveFamilyId,
+        ESPressio::Primitive::PrimitiveProtocolVersion,
+        const ESPressio::Primitive::PrimitivePolicyDescriptor&,
+        AdapterServiceClass,AdapterByteView,AdapterRouteToken) noexcept {
         const auto generation=++static_cast<Harness*>(owner)->Submissions;
         return {LowerTransportDisposition::Accepted,generation,false};
     }
