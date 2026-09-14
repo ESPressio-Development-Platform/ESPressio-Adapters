@@ -12,7 +12,7 @@ Direct ESPressio dependencies are exactly:
 - `ESPressio-Primitive`
 - `ESPressio-Task`
 
-There is no direct dependency on Event, Command, State, Mesh, Radio, Threads, Timing, Serializable, Persistence, Observable, or Security. A host configuration guard rejects those dependencies/tokens in the generic runtime surface. Concrete family/transport mapping belongs to later integration repositories such as MeshAdapters and RadioAdapters.
+There is no direct dependency on Event, Command, State, Mesh, Radio, Threads, Timing, Serializable, Persistence, Observable, or Security. A host configuration guard rejects those dependencies/tokens in the generic runtime surface. Concrete family/transport mapping belongs to integration repositories such as MeshAdapters and RadioAdapters.
 
 ## A1 — complete owned bytes
 
@@ -132,7 +132,7 @@ No pointer to the source Event/Command/State object is retained after the encode
 
 ## Lower transport and finite P2 pursuit
 
-The generic lower-transport binding is transport-agnostic. It receives immutable complete bytes, neutral service class, generation-safe Adapter record identity, and an opaque bounded route token.
+The generic lower-transport binding is transport-agnostic. It receives immutable complete bytes, neutral service class, generation-safe Adapter record identity, family/protocol/policy metadata, and an opaque bounded route token.
 
 Immediate transport results may be accepted, transient/resource unavailable, or permanently rejected. Deferred completion returns through `CompleteTransport()` using both the exact Adapter record identity and lower-transport generation; stale completions are rejected and counted diagnostically.
 
@@ -163,7 +163,7 @@ See [`RESOURCE_ACCOUNTING.md`](RESOURCE_ACCOUNTING.md) for the canonical host va
 
 `examples/MockAdapterRuntime/mock_adapter_runtime.cpp` defines a tiny mock Primitive-family binding and lower-transport binding without importing any family or transport library. CI syntax-compiles this example with the same System + Primitive + Task dependency boundary.
 
-Concrete integrations later map these neutral contracts onto their own semantics. MeshAdapters will bind Event/Command/State families to Mesh; RadioAdapters will explicitly map the neutral Adapter service taxonomy to Radio's wire-stable service classes. Neither concern belongs in this generic repository.
+Concrete integrations map these neutral contracts onto their own semantics. MeshAdapters binds Event/Command/State families to Mesh; RadioAdapters explicitly maps the neutral Adapter service taxonomy and Primitive metadata to Radio's wire-stable transport boundary. Neither concern belongs in this generic repository.
 
 ## Versioning
 
