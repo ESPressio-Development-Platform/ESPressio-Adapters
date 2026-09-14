@@ -25,8 +25,11 @@ struct Harness final {
     }
     static bool Validate(void*) noexcept { return true; }
     static LowerTransportSubmitResult Submit(
-        void* context,AdapterRecordIdentity record,AdapterServiceClass,
-        AdapterByteView,AdapterRouteToken) noexcept {
+        void* context,AdapterRecordIdentity record,
+        ESPressio::Primitive::PrimitiveFamilyId,
+        ESPressio::Primitive::PrimitiveProtocolVersion,
+        const ESPressio::Primitive::PrimitivePolicyDescriptor&,
+        AdapterServiceClass,AdapterByteView,AdapterRouteToken) noexcept {
         auto& harness=*static_cast<Harness*>(context);
         harness.Record=record;
         ++harness.SubmitCalls;
