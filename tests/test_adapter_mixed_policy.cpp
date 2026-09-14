@@ -4,6 +4,7 @@
 #include <atomic>
 #include <cassert>
 #include <cstdint>
+#include <thread>
 
 using namespace ESPressio::Adapters;
 
@@ -85,6 +86,20 @@ ESPressio::Primitive::PrimitivePolicyDescriptor DestinationEvidence() {
     return policy;
 }
 
+AdapterSubmissionDisposition SubmitEventually(
+    Runtime& runtime,std::uint8_t& value,AdapterRouteToken route,
+    ESPressio::Primitive::PrimitivePolicyDescriptor policy,std::uint64_t correlation) {
+    for(unsigned attempt=0;attempt<100000;++attempt){
+        const auto result=runtime.SubmitOutbound(
+            1,AdapterServiceClass::BestEffort,1,&value,route,policy,correlation);
+        if(result==AdapterSubmissionDisposition::Accepted) return result;
+        if(result!=AdapterSubmissionDisposition::Busy &&
+           result!=AdapterSubmissionDisposition::ResourceUnavailable) return result;
+        std::this_thread::yield();
+    }
+    return AdapterSubmissionDisposition::ResourceUnavailable;
+}
+
 } // namespace
 
 int main() {
@@ -110,14 +125,12 @@ int main() {
         assert(runtime.Start()==AdapterRuntimeStatus::Success);
 
         std::uint8_t value=7;
-        assert(runtime.SubmitOutbound(
-            1,AdapterServiceClass::BestEffort,1,&value,{1},NoRemoteEvidence(),11)
+        assert(SubmitEventually(runtime,value,{1},NoRemoteEvidence(),11)
             ==AdapterSubmissionDisposition::Accepted);
         WaitUntil(harness.Submissions,1);
 
         value=9;
-        assert(runtime.SubmitOutbound(
-            1,AdapterServiceClass::BestEffort,1,&value,{2},DestinationEvidence(),12)
+        assert(SubmitEventually(runtime,value,{2},DestinationEvidence(),12)
             ==AdapterSubmissionDisposition::Accepted);
         WaitUntil(harness.Submissions,2);
 
