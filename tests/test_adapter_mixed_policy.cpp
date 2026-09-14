@@ -8,7 +8,7 @@
 using namespace ESPressio::Adapters;
 
 using Arena=StaticByteArena<ByteClass<64,8>>;
-using Domain=StaticCapacityDomain<64,4,Arena>;
+using Domain=StaticCapacityDomain<512,4,Arena>;
 using Inbound=CapacityPlane<AdapterDirection::Inbound,Domain,Domain,Domain,Domain,Domain,Domain,Domain,Domain>;
 using Outbound=CapacityPlane<AdapterDirection::Outbound,Domain,Domain,Domain,Domain,Domain,Domain,Domain,Domain>;
 using Runtime=AdapterRuntime<Inbound,Outbound,1,4,1,1,4>;
